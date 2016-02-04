@@ -54,3 +54,24 @@ def test_commutativity(op, x, y):
 @given(mixed_integers, mixed_integers, mixed_integers)
 def test_associativity(op, x, y, z):
     assert op(op(x, y), z) == op(x, op(y, z))
+
+
+@given(mixed_integers, mixed_integers, mixed_integers)
+def test_left_distributivity(x, y, z):
+    assert x * (y + z) == x * y + x * z
+
+
+@given(mixed_integers, mixed_integers, mixed_integers)
+def test_right_distributivity(x, y, z):
+    assert (y + z) * x == y * x + z * x
+
+
+@given(mixed_integers, mixed_integers, mixed_integers, mixed_integers)
+def test_expansion(x, y, r, s):
+    assert (x + y) * (r + s) == x * r + x * s + y * r + y * s
+
+
+@given(mixed_integers, mixed_integers)
+def test_addition_of_positive_raises(x, y):
+    assume(y > 0)
+    assert x + y > x
