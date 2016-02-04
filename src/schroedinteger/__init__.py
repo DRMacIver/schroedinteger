@@ -13,388 +13,274 @@
 
 # END HEADER
 
-import random
-from functools import wraps
+import z3
 import operator
+import random
 
 
-class Observable(object):
-    def __init__(self, choices):
-        choices = tuple(sorted(frozenset(choices)))
-        if not choices:
-            raise ValueError(
-                "An observable must always have at least one option")
-        for x in choices:
-            if type(x) != int:
-                raise TypeError(
-                    "Choices for an observable must be vanilla integers but "
-                    "got %r of type %s" % (x, type(x).__name__)
-                )
-        self.choices = list(choices)
-        self.change_counter = 0
+class SharedSolver(object):
+    def __init__(self):
+        self.solver = z3.Solver()
 
-    def __repr__(self):
-        return "Observable(%r)" % (self.choices,)
-
-    @property
-    def is_determined(self):
-        assert self.choices
-        return len(self.choices) == 1
+    def merge(self, other):
+        if self.solver is other.solver:
+            return
+        for a in other.solver.assertions():
+            self.solver.add(a)
+        assert self.solver.check() == z3.sat
+        other.solver.reset()
+        other.solver = self.solver
 
 
-def resolve_observation(observables, function):
-    observables = set(observables)
-    if not observables:
-        return function({})
-    indeterminate = [o for o in observables if not o.is_determined]
-    # This is arbitrary, and is only to avoid hash randomization affecting the
-    # answer.
-    indeterminate.sort(
-        key=lambda o: o.choices
-    )
+def resolve_boolean_question(solver, exp):
+    if not isinstance(exp, z3.BoolRef):
+        exp = (exp != 0)
 
-    if len(indeterminate) == 0:
-        assignment = {}
-        for o in observables:
-            assignment[o] = o.choices[0]
-        return function(assignment)
-
-    if len(indeterminate) == 1:
-        decider = indeterminate[0]
-        assignment = {}
-        for o in observables:
-            assignment[o] = o.choices[0]
-        results = {}
-        for v in decider.choices:
-            assignment[decider] = v
-            results.setdefault(function(assignment), []).append(v)
-        results = sorted(results.items())
-        if len(results) == 1:
-            return results[0][0]
-        else:
-            answer, resolution = random.choice(results)
-            decider.choices = list(resolution)
-            decider.change_counter += 1
-            return answer
-
-    # Now the order actually matters, so we shuffle to deliberately remove any
-    # biasing.
-    random.shuffle(indeterminate)
-
-    if len(indeterminate) == 2:
-        x, y = indeterminate
-
-        assignment = {}
-        for o in observables:
-            assignment[o] = o.choices[0]
-
-        results = {}
-        for u in x.choices:
-            for v in y.choices:
-                assignment[x] = u
-                assignment[y] = v
-                results.setdefault(function(assignment), set()).add((u, v))
-        results = sorted(results.items())
-        assert results
-        if len(results) == 1:
-            return results[0][0]
-        else:
-            answer, resolution = random.choice(results)
-            resolution = sorted(set(resolution))
-            a, b = random.choice(resolution)
-            x.choices = [
-                u for u in x.choices if (u, b) in resolution
-            ]
-            assert a in x.choices
-            y.choices = [
-                v for v in y.choices if all(
-                    (u, v) in resolution for u in x.choices
-                )
-            ]
-            x.change_counter += 1
-            y.change_counter += 1
-            assert b in y.choices
-            return answer
-
-    # We don't want to deal with too much indeterminacy so we resolve a
-    # random subset of the variables to get us down to two.
-    while len(indeterminate) > 2:
-        r = indeterminate.pop()
-        r.choices = (random.choice(r.choices),)
-        r.change_counter += 1
-
-    assert len([o for o in observables if not o.is_determined]) <= 2
-    # We're now down to two so can try again.
-    return resolve_observation(observables, function)
+    if random.randint(0, 1):
+        solver.push()
+        solver.add(exp)
+        result = solver.check() == z3.sat
+        solver.pop()
+    else:
+        solver.push()
+        solver.add(z3.Not(exp))
+        result = solver.check() != z3.sat
+        solver.pop()
+    if result:
+        solver.add(exp)
+    else:
+        solver.add(z3.Not(exp))
+    assert solver.check()
+    return result
 
 
-def cache_answer(fn):
-    cache_key = '_%s_cache_key' % (fn.__name__,)
-
-    @wraps(fn)
-    def accept(self):
-        try:
-            return getattr(self, cache_key)
-        except AttributeError:
-            pass
-        if self.is_determined:
-            result = getattr(self.determined_value, fn.__name__)()
-        else:
-            result = fn(self)
-        setattr(self, cache_key, result)
-        return result
-    return accept
-
-
-def possible_values(observables, function):
-    indeterminate = [o for o in observables if not o.is_determined]
-    indeterminate.sort(
-        key=lambda o: o.choices
-    )
-    if not indeterminate:
-        return True, {resolve_observation(observables, function)}
-
-    if len(indeterminate) == 1:
-        determiner = indeterminate[0]
-        assignment = {}
-        for o in observables:
-            assignment[o] = o.choices[0]
-        result = set()
-        for o in determiner.choices:
-            assignment[determiner] = o
-            result.add(function(assignment))
-        return True, result
-    if len(indeterminate) == 2:
-        if len(indeterminate[0].choices) * len(indeterminate[1].choices) <= 10:
-            result = set()
-            assignment = {}
-            for o in observables:
-                assignment[o] = random.choice(o.choices)
-            x, y = indeterminate
-            for u in x.choices:
-                assignment[x] = u
-                for v in y.choices:
-                    assignment[y] = v
-                    result.add(function(assignment))
-            return True, result
-    result = set()
-    for _ in range(10):
-        assignment = {}
-        for o in observables:
-            assignment[o] = random.choice(o.choices)
-        result.add(function(assignment))
-    return False, result
+name_index = 0
 
 
 class schroedinteger(object):
     __class__ = int
 
     def __init__(
-        self, choices=None, *, observables=None, observe_value=None
+        self, choices=None, *, expression=None, shared_solver=None
     ):
-        if (observables is None) != (observe_value is None):
-            raise ValueError(
-                "observables and observe_value must be set together"
-            )
-        if observables is None and choices is None:
-            raise ValueError("must specify either choices or a calculation")
-        if choices is not None:
-            if observables is not None or observe_value is not None:
-                raise ValueError(
-                    "If choices is a non-None value then observables and "
-                    "observe_value cannot be specified additionally."
-                )
-            observable = Observable(choices)
-            observables = {observable}
-            observe_value = lambda assignment: assignment[observable]
-
-        self.observables = observables
-        self._observe_value = observe_value
-        self.__cached_determined = False
-        self.__cached_value = None
-        self.repr_cache_marker = None
-
-    def observe_value(self, resolution):
-        if self.is_determined:
-            return self.determined_value
+        self._known_value = None
+        self.shared_solver = shared_solver or SharedSolver()
+        global name_index
+        name_index += 1
+        self.name = z3.Int("V%d" % (name_index,))
+        if expression is None:
+            expression = self.name
         else:
-            return self._observe_value(resolution)
+            self.shared_solver.solver.add(self.name == expression)
+        self.expression = expression
+
+        if choices is not None:
+            self.shared_solver.solver.add(z3.Or(*[
+                self.expression == c for c in choices
+            ]))
+
+        self.__cached_bit_length = None
 
     def __repr__(self):
-        cache_marker = {
-            o: o.change_counter for o in self.observables
-        }
-        if cache_marker == self.repr_cache_marker:
-            return self.repr_cache
-
-        complete, options = possible_values(
-            self.observables, self.observe_value
-        )
-        options = list(options)
-        options.sort()
-        if complete:
-            if len(options) == 1:
-                result = repr(list(options)[0])
-            else:
-                result = "indeterminate: {%s}" % (
-                    ', '.join(map(str, options)),)
+        if self._known_value is not None:
+            return repr(self._known_value)
         else:
-            random.shuffle(options)
-            result = "indeterminate: {%s, ...}" % (
-                ', '.join(map(str, options)),)
-        self.repr_cache = result
-        self.repr_cache_marker = cache_marker
+            n = 6
+            pv = self.possible_values(n)
+            if pv is None:
+                return "Indeterminate: %r" % (
+                    self.expression,
+                )
+            if len(pv) == 1:
+                return repr(pv[0])
+            if len(pv) == n:
+                pv.append('...')
+            return "Indeterminate: %r {%s}" % (
+                self.expression,
+                ', '.join(map(str, pv))
+            )
+
+    def __bool__(self):
+        if self._known_value is not None:
+            return bool(self._known_value)
+        else:
+            if resolve_boolean_question(self.solver, self.expression):
+                return True
+            else:
+                self._known_value = 0
+                return False
+
+    def __int__(self):
+        # We don't double bounds each time because if we did then the expected
+        # value would be infinite! Instead we increase by a smaller exponent
+        # so the expectation is more reasonable.
+        ub = 1024
+        while not (self < ub):
+            ub = int((ub * 3) // 2)
+        lb = -1024
+        while not (lb <= self):
+            lb = int((lb * 3) // 2)
+        while lb + 1 < ub:
+            assert lb <= self <= ub
+            mid = (lb + ub) // 2
+            if self < mid:
+                ub = mid
+            else:
+                lb = mid
+        self._known_value = lb
+        return lb
+
+    def bit_length(self):
+        if self.__cached_bit_length is None:
+            if self < 0:
+                self.__cached_bit_length = (-self).bit_length()
+            elif self == 0:
+                self.__cached_bit_length = 0
+            else:
+                n = 64
+                while self >= 2 ** n:
+                    n += 1
+                while self < 2 ** n:
+                    n -= 1
+                self.__cached_bit_length = n + 1
+        return self.__cached_bit_length
+
+    @property
+    def solver(self):
+        return self.shared_solver.solver
+
+    def _val_or_exp(self):
+        if self._known_value is not None:
+            return self._known_value
+        pv = self.possible_values(2) or ()
+        if len(pv) == 1:
+            self._known_value = pv[0]
+            return self._known_value
+        return self.expression
+
+    def possible_values(self, n=10):
+        self.solver.push()
+        result = []
+        while len(result) < n:
+            if self.solver.check() != z3.sat:
+                break
+            v = self.solver.model()[self.name]
+            if v is None:
+                assert not result
+                return None
+            result.append(v)
+            self.solver.add(self.name != result[-1])
+        self.solver.pop()
+        assert result
         return result
 
-    @cache_answer
-    def __bool__(self):
-        return bool(
-            resolve_observation(
-                self.observables,
-                lambda resolution: bool(self.observe_value(resolution))))
 
-    @cache_answer
-    def __int__(self):
-        return resolve_observation(self.observables, self.observe_value)
-
-    def __hash__(self):
-        return hash(int(self))
-
-    __index__ = __int__
-
-    def __float__(self):
-        return float(int(self))
-
-    def __complex__(self):
-        return complex(int(self))
-
-    def __truediv__(self, other):
-        return int(self) / int(other)
-
-    def __rtruediv__(self, other):
-        return int(other) / int(self)
-
-    @property
-    def is_determined(self):
-        if self.__cached_determined:
-            return True
-        self.__cached_determined = all(
-            o.is_determined for o in self.observables
-        )
-        return self.__cached_determined
-
-    @property
-    def determined_value(self):
-        if self.__cached_value is not None:
-            return self.__cached_value
-        if not self.is_determined:
-            raise ValueError("Value has not yet been determined")
-        self.__cached_value = resolve_observation(
-            self.observables, self._observe_value
-        )
-        assert isinstance(self.__cached_value, int)
-        return self.__cached_value
-
-
-def resolve_binary(operator, self, other):
-    assert isinstance(self, schroedinteger)
-    if self.is_determined:
-        return operator(self.determined_value, other)
-    if isinstance(other, schroedinteger):
-        if other.is_determined:
-            return resolve_binary(operator, self, other.determined_value)
-        obvs = self.observables | other.observables
-        return schroedinteger(
-            observables=obvs,
-            observe_value=lambda resolution: operator(
-                self.observe_value(resolution),
-                other.observe_value(resolution),
-            ))
-    else:
-        return schroedinteger(
-            observables=self.observables,
-            observe_value=lambda resolution: operator(
-                self.observe_value(resolution), other))
-
-
-def observe_comparison(comparison, value_on_self):
+def binary_operator(operator):
     def accept(self, other):
-        if self is other:
-            return value_on_self
-        return bool(resolve_binary(comparison, self, other))
-    return accept
-
-
-schroedinteger.__lt__ = observe_comparison(operator.lt, False)
-schroedinteger.__ne__ = observe_comparison(operator.ne, False)
-schroedinteger.__gt__ = observe_comparison(operator.gt, False)
-schroedinteger.__le__ = observe_comparison(operator.le, True)
-schroedinteger.__eq__ = observe_comparison(operator.eq, True)
-schroedinteger.__ge__ = observe_comparison(operator.ge, True)
-
-
-def compute_arithmetic(operator, value_on_zero=None):
-    def accept(self, other):
-        if self.is_determined:
-            return operator(self.determined_value, other)
+        if self._known_value is not None:
+            return operator(self._known_value, other)
         if isinstance(other, schroedinteger):
-            return resolve_binary(operator, self, other)
-        if value_on_zero is not None and other == 0:
-            return value_on_zero(self)
-        else:
+            self.shared_solver.merge(other.shared_solver)
+            if other._known_value is not None:
+                return operator(self, other._known_value)
             return schroedinteger(
-                observables=self.observables,
-                observe_value=lambda resolution: operator(
-                    self.observe_value(resolution), other))
+                expression=operator(self.expression, other.expression),
+                shared_solver=self.shared_solver,
+            )
+        return schroedinteger(
+            expression=operator(self.expression, other),
+            shared_solver=self.shared_solver,
+        )
     return accept
 
-schroedinteger.__add__ = compute_arithmetic(operator.add, lambda self: self)
-schroedinteger.__sub__ = compute_arithmetic(operator.sub, lambda self: self)
-schroedinteger.__mul__ = compute_arithmetic(operator.mul, lambda self: 0)
-schroedinteger.__floordiv__ = compute_arithmetic(operator.floordiv)
-schroedinteger.__mod__ = compute_arithmetic(operator.mod)
-schroedinteger.__divmod__ = compute_arithmetic(divmod)
-schroedinteger.__pow__ = compute_arithmetic(operator.__pow__, lambda self: 1)
-schroedinteger.__lshift__ = compute_arithmetic(
-    operator.lshift, lambda self: self)
-schroedinteger.__rshift__ = compute_arithmetic(
-    operator.rshift, lambda self: self)
-schroedinteger.__and__ = compute_arithmetic(operator.and_, lambda self: 0)
-schroedinteger.__or__ = compute_arithmetic(operator.or_, lambda self: self)
-schroedinteger.__xor__ = compute_arithmetic(operator.xor, lambda self: self)
+
+schroedinteger.__add__ = binary_operator(operator.add)
+schroedinteger.__sub__ = binary_operator(operator.sub)
+schroedinteger.__mul__ = binary_operator(operator.mul)
+schroedinteger.__floordiv__ = binary_operator(operator.floordiv)
+schroedinteger.__mod__ = binary_operator(operator.mod)
+schroedinteger.__divmod__ = binary_operator(divmod)
+schroedinteger.__pow__ = binary_operator(operator)
+
+
+def int_to_bv(intexp):
+    return z3.Z3_mk_int2bv(intexp.ctx_ref(), intexp.as_ast(), 1)
+
+
+def bitwise_operator(opeerator):
+    def accept(self, other):
+        self_expression = self._val_or_exp()
+        if isinstance(other, schroedinteger):
+            self.shared_solver.merge(other.shared_solver)
+            other_expression = other._val_or_exp()
+        else:
+            other_expression = other
+        
+    return accept
+
+
+schroedinteger.__lshift__ = binary_operator(operator.lshift)
+schroedinteger.__rshift__ = binary_operator(operator.rshift)
+schroedinteger.__and__ = binary_operator(operator.and_)
+schroedinteger.__or__ = binary_operator(operator.or_)
+schroedinteger.__xor__ = binary_operator(operator.xor)
 
 
 def swop(f):
     return lambda x, y: f(y, x)
 
 
-schroedinteger.__radd__ = compute_arithmetic(operator.add, lambda self: self)
-schroedinteger.__rsub__ = compute_arithmetic(
-    swop(operator.sub), lambda self: -self)
-schroedinteger.__rmul__ = compute_arithmetic(operator.mul, lambda self: 0)
-schroedinteger.__rfloordiv__ = compute_arithmetic(swop(operator.floordiv))
-schroedinteger.__rmod__ = compute_arithmetic(swop(operator.mod))
-schroedinteger.__rdivmod__ = compute_arithmetic(swop(divmod))
-schroedinteger.__rpow__ = compute_arithmetic(
-    swop(operator.__pow__), lambda self: 0 if self else 1)
-schroedinteger.__rlshift__ = compute_arithmetic(
-    swop(operator.lshift), lambda self: 0)
-schroedinteger.__rrshift__ = compute_arithmetic(
-    swop(operator.rshift), lambda self: 0)
-schroedinteger.__rand__ = compute_arithmetic(operator.and_, lambda self: 0)
-schroedinteger.__ror__ = compute_arithmetic(operator.or_, lambda self: self)
-schroedinteger.__rxor__ = compute_arithmetic(operator.xor, lambda self: self)
+schroedinteger.__radd__ = binary_operator(operator.add)
+schroedinteger.__rsub__ = binary_operator(swop(operator.sub))
+schroedinteger.__rmul__ = binary_operator(operator.mul)
+schroedinteger.__rfloordiv__ = binary_operator(swop(operator.floordiv))
+schroedinteger.__rmod__ = binary_operator(swop(operator.mod))
+schroedinteger.__rdivmod__ = binary_operator(swop(divmod))
+schroedinteger.__rpow__ = binary_operator(operator.pow)
+schroedinteger.__rlshift__ = binary_operator(swop(operator.lshift))
+schroedinteger.__rrshift__ = binary_operator(swop(operator.rshift))
+schroedinteger.__rand__ = binary_operator(operator.and_)
+schroedinteger.__ror__ = binary_operator(operator.or_)
+schroedinteger.__rxor__ = binary_operator(operator.xor)
+
+
+def binary_comparison(comparison, self_value):
+    def accept(self, other):
+        if self is other:
+            return self_value
+        if (
+            self._known_value is not None and
+            isinstance(other, schroedinteger) and
+            other._known_value is not None
+        ):
+            return comparison(self._known_value, other._known_value)
+        else:
+            if isinstance(other, schroedinteger):
+                self.shared_solver.merge(other.shared_solver)
+                exp = other._val_or_exp()
+            else:
+                exp = other
+            return resolve_boolean_question(
+                self.solver,
+                comparison(self._val_or_exp(), exp))
+    return accept
+
+
+schroedinteger.__lt__ = binary_comparison(operator.lt, False)
+schroedinteger.__ne__ = binary_comparison(operator.ne, False)
+schroedinteger.__gt__ = binary_comparison(operator.gt, False)
+schroedinteger.__le__ = binary_comparison(operator.le, True)
+schroedinteger.__eq__ = binary_comparison(operator.eq, True)
+schroedinteger.__ge__ = binary_comparison(operator.ge, True)
 
 
 def compute_unary(operator):
     def accept(self):
-        if self.is_determined:
-            return operator(self.determined_value)
-        else:
-            return schroedinteger(
-                observables=self.observables,
-                observe_value=lambda resolution: operator(
-                    self.observe_value(resolution)))
+        exp = self._val_or_exp()
+        if isinstance(exp, int):
+            return operator(exp)
+        return schroedinteger(
+            expression=operator(exp), shared_solver=self.shared_solver)
     return accept
 
 
