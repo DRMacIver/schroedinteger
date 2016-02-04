@@ -9,8 +9,8 @@ but I make no real claims beyond that. If you use it you will almost certainly
 run into problems.
 
 The concept here is as follows: Suppose we want to test something by throwing
-random data at it, e.g. using `Hypothesis <http://hypothesis.readthedocs.org>`_
-, but the subset of the data we do anything useful with is extremely finicky
+random data at it, e.g. using `Hypothesis <http://hypothesis.readthedocs.org>`_,
+but the subset of the data we do anything useful with is extremely finicky
 and we don't have a good handle on what a useful distribution would be.
 
 But if we define our own type, we have control over the comparison operators.
@@ -49,7 +49,7 @@ possibly have:
     2
 
 When two schroedintegers interact they may force some observations about
-eachother:
+each other:
 
 
 .. code:: pycon
@@ -70,7 +70,7 @@ tractable.
 
 For example, a much wider range of possible values for x and y would have been
 possible here, but the library wants to keep x and y independent: After that
-interaction, the value of x and y shouldn't affect eachother further.
+interaction, the value of x and y shouldn't affect each other further.
 
 You can perform normal arithmetic on schroedintegers:
 
