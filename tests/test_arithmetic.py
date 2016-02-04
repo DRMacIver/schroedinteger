@@ -11,7 +11,7 @@ commutative_operators = [
 associative_operators = commutative_operators
 
 binary_operators = commutative_operators + [
-    operator.rshift,
+    operator.rshift, operator.truediv
 ]
 
 embiggening_operators = [operator.lshift, operator.pow]
@@ -23,7 +23,7 @@ arithmetic_errors = (ZeroDivisionError, ValueError, OverflowError)
 @given(mixed_integers, mixed_integers)
 def test_binary_operators_agree_1(op, x, y):
     try:
-        assert int(op(x, y)) == op(int(x), int(y))
+        assert op(x, y) == op(int(x), int(y))
     except arithmetic_errors:
         assume(False)
 
@@ -32,7 +32,7 @@ def test_binary_operators_agree_1(op, x, y):
 @given(mixed_integers, mixed_integers)
 def test_binary_operators_agree_2(op, x, y):
     try:
-        assert op(int(x), int(y)) == int(op(x, y))
+        assert op(int(x), int(y)) == op(x, y)
     except arithmetic_errors:
         assume(False)
 

@@ -265,6 +265,12 @@ class schroedinteger(object):
     def __complex__(self):
         return complex(int(self))
 
+    def __truediv__(self, other):
+        return int(self) / int(other)
+
+    def __rtruediv__(self, other):
+        return int(other) / int(self)
+
     @property
     def is_determined(self):
         if self.__cached_determined:
@@ -306,9 +312,6 @@ def resolve_binary(operator, self, other):
             observables=self.observables,
             observe_value=lambda resolution: operator(
                 self.observe_value(resolution), other))
-
-    def __truediv__(self, other):
-        return float(self // other)
 
 
 def observe_comparison(comparison, value_on_self):
