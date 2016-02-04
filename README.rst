@@ -28,7 +28,7 @@ question about its value, it determines a range of possible answers, picks one
 at random, and updates its knowledge about the range of values it could
 possibly have:
 
-.. pycon::
+.. code:: pycon
 
     >>> from schroedinteger import schroedinteger
     >>> x = schroedinteger([1, 2, 3, 4, 5, 6, 7])
@@ -51,7 +51,7 @@ When two schroedintegers interact they may force some observations about
 eachother:
 
 
-.. pycon::
+.. code:: pycon
 
     >>> x = schroedinteger(range(10))
     >>> y = schroedinteger(range(5, 15))
@@ -73,7 +73,7 @@ interaction, the value of x and y shouldn't affect eachother further.
 
 You can perform normal arithmetic on schroedintegers:
 
-.. pycon::
+.. code:: pycon
 
     >>> x = schroedinteger({1, 3, 7})
     >>> y = schroedinteger({-1, 1})
@@ -84,7 +84,7 @@ When you create values like this, their eventual values are forced to remain
 consistent, so you should never see things in an inconsistent state:
 
 
-.. pycon::
+.. code:: pycon
 
     >>> x = schroedinteger({1, 3, 7})
     >>> y = schroedinteger({-1, 1})
