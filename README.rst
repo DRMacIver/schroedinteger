@@ -13,8 +13,9 @@ random data at it, e.g. using `Hypothesis <http://hypothesis.readthedocs.org>`_
 , but the subset of the data we do anything useful with is extremely finicky
 and we don't have a good handle on what a useful distribution would be.
 
-Can we then use mocking to look at the questions the code asks about our data
-and use that to determine the data we feed in?
+But if we define our own type, we have control over the comparison operators.
+Can we then use that to look at the questions the code asks about our data
+determine the data we feed in based on the answers we want to give?
 
 A schroedinteger answers that question affirmatively. Every other question it
 holds off judgement on for as long as possible.
