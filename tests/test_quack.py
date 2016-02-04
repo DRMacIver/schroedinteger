@@ -17,3 +17,11 @@ def test_int_schroedinteger_is_really_int():
 @given(schroedintegers)
 def test_hashes_the_same(x):
     assert hash(x) == hash(int(x))
+
+
+def test_has_same_methods():
+    x = 1
+    y = schroedinteger([1, 2])
+
+    for v in dir(x):
+        assert hasattr(y, v)

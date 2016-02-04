@@ -274,6 +274,49 @@ class schroedinteger(object):
     def __rtruediv__(self, other):
         return int(other) / int(self)
 
+    def __ceil__(self):
+        return self
+
+    def __floor__(self):
+        return self
+
+    def __getnewargs__(self):
+        return ([int(self)],)
+
+    def __round__(self, digits=None):
+        return self
+
+    def __trunc__(self):
+        return self
+
+    def conjugate(self):
+        return self
+
+    def denominator(self):
+        return 1
+
+    def numerator(self):
+        return self
+
+    def real(self):
+        return self
+
+    def imag(self):
+        return 0
+
+    @staticmethod
+    def from_bytes(*args, **kwargs):
+        return int.from_bytes(*args, **kwargs)
+
+    def to_bytes(self, length, byteorder, signed=False):
+        return int(self).to_bytes(length, byteorder, signed=signed)
+
+    def bit_length(self):
+        return schroedinteger(
+            observables=self.observables,
+            observe_value=lambda assignment: self.observe_value(
+                assignment).bit_length())
+
     @property
     def is_determined(self):
         if self.__cached_determined:
