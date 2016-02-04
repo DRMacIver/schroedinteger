@@ -1,0 +1,8 @@
+*.swp
+.cache
+.hypothesis
+venv
+*.egg-info
+__pycache__
+.tox
+
