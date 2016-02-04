@@ -257,6 +257,9 @@ class schroedinteger(object):
     def __int__(self):
         return resolve_observation(self.observables, self.observe_value)
 
+    def __hash__(self):
+        return hash(int(self))
+
     __index__ = __int__
 
     def __float__(self):
