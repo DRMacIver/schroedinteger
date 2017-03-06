@@ -8,6 +8,8 @@ It's not really production ready. It's passably tested, and it seems to work,
 but I make no real claims beyond that. If you use it you will almost certainly
 run into problems.
 
+It implements what is essentially a simple form of [Concolic testing](https://en.wikipedia.org/wiki/Concolic_testing).
+
 The concept here is as follows: Suppose we want to test something by throwing
 random data at it, e.g. using `Hypothesis <http://hypothesis.readthedocs.org>`_,
 but the subset of the data we do anything useful with is extremely finicky
