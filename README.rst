@@ -8,7 +8,7 @@ It's not really production ready. It's passably tested, and it seems to work,
 but I make no real claims beyond that. If you use it you will almost certainly
 run into problems.
 
-It implements what is essentially a simple form of [Concolic testing](https://en.wikipedia.org/wiki/Concolic_testing).
+It implements what is essentially a simple form of `Concolic testing <https://en.wikipedia.org/wiki/Concolic_testing>_.
 
 The concept here is as follows: Suppose we want to test something by throwing
 random data at it, e.g. using `Hypothesis <http://hypothesis.readthedocs.org>`_,
